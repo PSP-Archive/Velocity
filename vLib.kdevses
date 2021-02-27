@@ -1,0 +1,89 @@
+<?xml version = '1.0' encoding = 'UTF-8'?>
+<!DOCTYPE KDevPrjSession>
+<KDevPrjSession>
+ <DocsAndViews NumberOfDocuments="18" >
+  <Doc0 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/font.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc0>
+  <Doc1 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/audio.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc1>
+  <Doc2 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/controller.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc2>
+  <Doc3 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/debug.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc3>
+  <Doc4 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/image.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc4>
+  <Doc5 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/main.c" >
+   <View0 Encoding="" line="12" Type="Source" />
+  </Doc5>
+  <Doc6 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/model.c" >
+   <View0 Encoding="" line="129" Type="Source" />
+  </Doc6>
+  <Doc7 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/shape.c" >
+   <View0 Encoding="" line="112" Type="Source" />
+  </Doc7>
+  <Doc8 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/vfpu.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc8>
+  <Doc9 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/vlib.c" >
+   <View0 Encoding="" line="109" Type="Source" />
+  </Doc9>
+  <Doc10 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/vlib.h" >
+   <View0 Encoding="" line="12" Type="Source" />
+  </Doc10>
+  <Doc11 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/vram.c" >
+   <View0 Encoding="" line="21" Type="Source" />
+  </Doc11>
+  <Doc12 NumberOfViews="1" URL="file:///home/gabe/Code/vLib/Makefile" >
+   <View0 Encoding="" Type="Source" />
+  </Doc12>
+  <Doc13 NumberOfViews="1" URL="file:///home/gabe/Code/OSLib_src/oslib.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc13>
+  <Doc14 NumberOfViews="1" URL="file:///home/gabe/Code/pspsdk/src/gum/pspgum.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc14>
+  <Doc15 NumberOfViews="1" URL="file:///home/gabe/Code/pspsdk/src/gum/pspgum_vfpu.c" >
+   <View0 Encoding="" Type="Source" />
+  </Doc15>
+  <Doc16 NumberOfViews="1" URL="file:///home/gabe/Code/pspsdk/src/gum/pspgum.h" >
+   <View0 Encoding="" Type="Source" />
+  </Doc16>
+  <Doc17 NumberOfViews="1" URL="file:///home/gabe/Code/pspsdk/src/gu/pspgu.h" >
+   <View0 Encoding="" line="1431" Type="Source" />
+  </Doc17>
+ </DocsAndViews>
+ <pluginList>
+  <kdevdebugger>
+   <breakpointList/>
+   <showInternalCommands value="0" />
+  </kdevdebugger>
+  <kdevastyle>
+   <AStyle FStyle="GLOBAL" />
+  </kdevastyle>
+  <kdevbookmarks>
+   <bookmarks>
+    <bookmark url="/home/gabe/Code/vLib/model.c" >
+     <mark line="183" />
+    </bookmark>
+    <bookmark url="/home/gabe/Code/OSLib_src/oslib.c" >
+     <mark line="603" />
+     <mark line="127" />
+    </bookmark>
+   </bookmarks>
+  </kdevbookmarks>
+  <kdevsubversion>
+   <subversion base="" />
+  </kdevsubversion>
+  <kdevvalgrind>
+   <executable path="" params="" />
+   <valgrind path="valgrind" params=" --tool=memcheck --leak-check=yes" />
+   <calltree path="valgrind" params="--tool=callgrind" />
+   <kcachegrind path="kcachegrind" />
+  </kdevvalgrind>
+ </pluginList>
+</KDevPrjSession>

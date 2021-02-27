@@ -1,0 +1,117 @@
+/*
+
+	Velocity  v1.5
+	Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
+
+//---------------------------------------------------------------------------------//
+// Includes                                                                        //
+//---------------------------------------------------------------------------------//
+
+#include "vlib.h"
+
+//---------------------------------------------------------------------------------//
+// Debugging                                                                       //
+//---------------------------------------------------------------------------------//
+
+void fps() {
+	// FPS
+	curFps++;
+	sceRtcGetCurrentTick ( &fpsTickNow );
+
+	if ( ( ( fpsTickNow - fpsTickLast ) / ( ( float ) tickResolution ) ) >= 1.0f ) {
+		fpsTickLast = fpsTickNow;
+		lastFps = curFps;
+		curFps = 0;
+	}
+
+	pspDebugScreenSetOffset ( ( int ) fbp0 );
+	pspDebugScreenSetXY ( 0, 0 );
+	pspDebugScreenPrintf ( "FPS: %d", ( int ) lastFps );
+}
+
+void fpsX ( const char *format, ... ) {
+	va_list opt = 0;
+	char buff[2048];
+	va_start ( opt, format );
+	vsnprintf ( buff, ( size_t ) sizeof ( buff ), format, opt );
+
+	// FPS
+	curFps++;
+	sceRtcGetCurrentTick ( &fpsTickNow );
+
+	if ( ( ( fpsTickNow - fpsTickLast ) / ( ( float ) tickResolution ) ) >= 1.0f ) {
+		fpsTickLast = fpsTickNow;
+		lastFps = curFps;
+		curFps = 0;
+	}
+
+	pspDebugScreenSetOffset ( ( int ) fbp0 );
+	pspDebugScreenSetXY ( 0, 0 );
+	pspDebugScreenPrintf ( "FPS: %d\n%s", ( int ) lastFps, buff );
+}
+
+void sysmon() {
+	// FPS
+	curFps++;
+	sceRtcGetCurrentTick ( &fpsTickNow );
+
+	if ( ( ( fpsTickNow - fpsTickLast ) / ( ( float ) tickResolution ) ) >= 1.0f ) {
+		fpsTickLast = fpsTickNow;
+		lastFps = curFps;
+		curFps = 0;
+	}
+
+	pspDebugScreenSetOffset ( ( int ) fbp0 );
+	pspDebugScreenSetXY ( 0, 0 );
+	pspDebugScreenPrintf ( "FPS: %d	Ram: %d	Vram: %d	Graphics Mem: %d", ( int ) lastFps, sceKernelMaxFreeMemSize(), vmemavail(), 262144 - sceGuCheckList() );
+}
+
+void sysmonX ( const char *format, ... ) {
+	va_list opt = 0;
+	char buff[2048];
+	va_start ( opt, format );
+	vsnprintf ( buff, ( size_t ) sizeof ( buff ), format, opt );
+
+	// FPS
+	curFps++;
+	sceRtcGetCurrentTick ( &fpsTickNow );
+
+	if ( ( ( fpsTickNow - fpsTickLast ) / ( ( float ) tickResolution ) ) >= 1.0f ) {
+		fpsTickLast = fpsTickNow;
+		lastFps = curFps;
+		curFps = 0;
+	}
+
+	pspDebugScreenSetOffset ( ( int ) fbp0 );
+	pspDebugScreenSetXY ( 0, 0 );
+	pspDebugScreenPrintf ( "FPS: %d	Mem: %d	Vram: %d	Graphics Mem: %d\n%s", ( int ) lastFps, sceKernelMaxFreeMemSize(), vmemavail(), 262144 - sceGuCheckList(), buff );
+}
+
+u64 epoch = 0;
+u64 timeTaken = 0;
+
+void start_ticker() {
+	sceRtcGetCurrentTick ( &epoch );
+}
+
+int end_ticker() {
+	sceRtcGetCurrentTick ( &timeTaken );
+	timeTaken -= epoch;
+	return timeTaken;
+}

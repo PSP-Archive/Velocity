@@ -1,0 +1,96 @@
+Velocity  v1.5
+Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+::Description::
+Velocity is a free library written by Gabriel Anderson(ZettaBlade). You may contact him at zettablade@hotmail.com
+Velocity's purpose is to make developing programs on the Sony PlayStation Portable easier but keep
+all of the speed you maintain by using the raw PSPSDK. Thus, Velocity was born.
+For information on how to use Velocity, please read the documention.
+I have nothing to do with Sony Entertainment.
+
+::Requirments::
+SDK installed from toolchain (no preinstalled crap)
+libpng
+zlib
+libjpeg
+
+::Install::
+To install, simply cd into the folder with vlib.c/h and type
+make install
+to install. It will compile everything for you as long as you meet the requirments.
+
+
+::Use::
+For more information on using vLib, read through the source.
+I also recommend checking out the included sample.
+For Makefile's, please use the one included in the sample. You may modify it,
+but there is no garentee it will work afterwords.
+
+::Contact::
+If you have any questions or comments, please email me at zettablade@hotmail.com
+Do not send any spam or solicitations to me.
+
+Thanks to the following people:
+
+Raphael
+Insomniac_psp/InsertWittyName
+Siberian_Star
+Xfacter
+SG57
+Tomaz^
+Whazilla/MegaROM
+
+If I forgot to add you to the list, please contact me.
+
+::Features::
+- Loads PNG images
+- Load image into ram and vram
+- Auto-swizzles images upon loading (makes for a much faster blit)
+- Draw images
+- Rotate images
+- Crop images
+- Draw an image from a specified center
+- Unload images
+- Enable/Disable linear filter
+- Powerful input checking
+- Functions for start and stop library and drawing
+- some benchmarking functions
+- Load custom mdl file.
+- Display models
+- Primitive display list
+- 3rd person camera
+- Timed movement
+
+::Todo::
+- Bugfixes! (yay?)
+- Optimizations (duh!)
+- Add in support for the following image formats.
+	tga bmp jpg/jpeg/jpe
+- Add in support for the following 3D model formats.
+	obj md2 (these ones eventually) 3ds maya blend
+- Add in support for the following audio formats
+	at3 wav
+- Write a player to play all the media formats listed above
+- Better use of display lists
+- Add image alpha masking
+- Add in a bitmap font loader and printing function
+- Graphical filter functions
+  lighting, reflection, cell shading (need more)
+- Terrain generator
+- Mip-Maps
+- Functional 1st person camera
+- More powerful/faster 3rd person camera

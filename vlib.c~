@@ -1,0 +1,243 @@
+/*
+
+	Velocity  v1.3
+	Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
+
+//---------------------------------------------------------------------------------//
+// Includes                                                                        //
+//---------------------------------------------------------------------------------//
+
+#include "vlib.h"
+
+//---------------------------------------------------------------------------------//
+// Callbacks                                                                       //
+//---------------------------------------------------------------------------------//
+
+// Exit callback
+static int exit_callback ( int arg1, int arg2, void *common ) {
+	sceKernelExitGame();
+	return 0;
+}
+
+// Callback thread
+static int CallbackThread ( SceSize args, void *argp ) {
+	int cbid;
+
+	cbid = sceKernelCreateCallback ( "Exit Callback", exit_callback, NULL );
+	sceKernelRegisterExitCallback ( cbid );
+
+	sceKernelSleepThreadCB();
+
+	return 0;
+}
+
+// Sets up the callback thread and returns its thread id
+static int SetupCallbacks ( void ) {
+	int thid = 0;
+
+	thid = sceKernelCreateThread ( "update_thread", CallbackThread, 0x11, 0xFA0, 0, 0 );
+	if ( thid >= 0 )
+		sceKernelStartThread ( thid, 0, 0 );
+
+	return thid;
+}
+
+
+//---------------------------------------------------------------------------------//
+// General                                                                         //
+//---------------------------------------------------------------------------------//
+
+u32* fbp0;
+u32* fbp1;
+u16* zbp;
+unsigned int __attribute__ ( ( aligned ( 16 ) ) ) DList[262144];
+int curFps = 0, lastFps = 0;		// for calculating the frames per second
+
+u32 tickResolution;
+u64 fpsTickNow;
+u64 fpsTickLast;
+
+// More variables for time based movement (if anyone knows how I could rid my self of these (if I use the last two, it causes issues)
+// and/or knows how I could make them u32 and have them still work, please tell me ASAP!
+u64 timeNow;
+u64 timeLastAsk;
+
+CONTROLLER buttonInit;
+SceCtrlData ctrl;
+
+const int BUF_WIDTH = 512;
+const int SCR_WIDTH = 480;
+const int SCR_HEIGHT = 272;
+const int FRAMEBUFFER_SIZE = 512*272*sizeof ( u32 );
+const int DEPTHBUFFER_SIZE = 512*272*sizeof ( u16 );
+
+const int PRINT_BUFF = 512;
+
+const int IN_RAM = 0;
+const int IN_VRAM = 1;
+
+const int OFF = 0;
+const int ON = 1;
+
+const int DRAW_2D = 0;
+const int DRAW_3D = 1;
+
+const float PI = 3.141593;
+const float PI_180 = ( int ) 3.141593 / 180.0;
+
+float deltaTime = 0;
+
+short drawingStarted = 0;
+
+ScePspFMatrix4 m_ortho, m_projection, m_projection_view, m_projection_model, m_ortho_view, m_ortho_model;
+
+void start_vLib ( void ) {
+	pspDebugScreenInit();
+	SetupCallbacks();
+	sceKernelDcacheWritebackAll();
+
+	sceCtrlSetSamplingCycle ( 0 );
+	sceCtrlSetSamplingMode ( 1 );
+
+	button = &buttonInit;
+
+	sceRtcGetCurrentTick ( &fpsTickLast );
+	sceRtcGetCurrentTick ( &timeLastAsk );
+	tickResolution = sceRtcGetTickResolution();
+
+	fbp0 = ( u32* ) vrelptr ( valloc ( FRAMEBUFFER_SIZE ) );
+	fbp1 = ( u32* ) vrelptr ( valloc ( FRAMEBUFFER_SIZE ) );
+	zbp = ( u16* ) vrelptr ( valloc ( DEPTHBUFFER_SIZE ) );
+
+	sceKernelDcacheWritebackAll();
+
+	// Setup GU
+
+	sceGuInit();
+	sceGuStart ( GU_DIRECT, DList );
+
+	sceGuDrawBuffer ( GU_PSM_8888, fbp0, BUF_WIDTH );
+	sceGuDispBuffer ( SCR_WIDTH, SCR_HEIGHT, fbp1, BUF_WIDTH );
+	sceGuDepthBuffer ( zbp, BUF_WIDTH );
+
+	sceKernelDcacheWritebackAll();
+
+	sceGuOffset ( 2048 - ( SCR_WIDTH / 2 ), 2048 - ( SCR_HEIGHT / 2 ) );
+	sceGuViewport ( 2048, 2048, SCR_WIDTH, SCR_HEIGHT );
+	sceGuDepthRange ( 65535, 0 );
+
+	// Setup the scissor test
+	sceGuScissor ( 0, 0, SCR_WIDTH, SCR_HEIGHT );
+	sceGuEnable ( GU_SCISSOR_TEST );
+	// Setup the depth testing
+	sceGuDepthFunc ( GU_GEQUAL );
+	sceGuEnable ( GU_DEPTH_TEST );
+	// Enable clipping
+	sceGuDisable ( GU_CLIP_PLANES );
+	// Setup face culling
+	sceGuFrontFace ( GU_CW );
+	sceGuDisable ( GU_CULL_FACE );
+	// Setup shading (not lighting!)
+	sceGuShadeModel ( GU_SMOOTH );
+	// Setup textures
+	sceGuTexMode ( GU_PSM_8888, 0, 0, 1 );
+	sceGuTexFunc ( GU_TFX_REPLACE, GU_TCC_RGBA );
+	// Enable 2D textures
+	sceGuEnable ( GU_TEXTURE_2D );
+	// Do alpha blending
+	sceGuBlendFunc ( GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0 );
+	sceGuEnable ( GU_BLEND );
+	// Setup the alpha test
+	sceGuAlphaFunc ( GU_GREATER, 0, 0xff );
+	sceGuEnable ( GU_ALPHA_TEST );
+	// Setup the color/depth for clearing the screen
+	sceGuClearColor ( RGB ( 0, 0, 0 ) );
+	sceGuClearDepth ( 0 );
+
+	sceGuFinish();
+	sceGuSync ( 0, 0 );
+
+	sceDisplayWaitVblankStart();
+	sceGuDisplay ( GU_TRUE );
+
+	sceKernelDcacheWritebackAll();
+
+	vfpu_perspective_m ( &m_projection, 75.0f, 16.0f / 9.0f, .5f, 1000.0f );
+	vfpu_ortho_m ( &m_ortho, 0.0f, 480.0f, 272.0f, 0.0f, -1.0f, 1.0f );
+	vfpu_identity_m ( &m_projection_view );
+	vfpu_identity_m ( &m_projection_model );
+	vfpu_identity_m ( &m_ortho_view );
+	vfpu_identity_m ( &m_ortho_model );
+}
+
+void stop_vLib ( void ) {
+	vfree ( fbp0 );
+	vfree ( fbp1 );
+	vfree ( zbp );
+	free ( DList );
+	sceGuTerm();
+}
+
+void start_drawing ( void ) {
+	if ( drawingStarted )
+		return;
+	sceGuStart ( GU_DIRECT, DList );
+	drawingStarted = 1;
+}
+
+void end_drawing ( void ) {
+	if ( !drawingStarted )
+		return;
+	sceGuFinish();
+	sceGuSync ( 0, 0 );
+	drawingStarted = 0;
+}
+
+void sync_frame ( void ) {
+	if ( drawingStarted )
+		return;
+	asm __volatile__ ( "\nsyscall 0x2147\n" );
+	fbp0 = sceGuSwapBuffers();
+}
+
+void flip_screen ( void ) {
+	if ( drawingStarted )
+		return;
+	fbp0 = sceGuSwapBuffers();
+}
+
+void clear_screen ( void ) {
+	if ( !drawingStarted )
+		return;
+	sceGuClear ( GU_COLOR_BUFFER_BIT | GU_DEPTH_BUFFER_BIT );
+}
+
+void set_clear_color ( u32 color ) {
+	sceGuClearColor ( color );
+}
+
+void wait_to_vsync ( void ) {
+	asm __volatile__ ( "\nsyscall 0x2147\n" );
+}
+
+void update_delta_time ( void ) {
+	sceRtcGetCurrentTick ( &timeNow );
+	deltaTime = ( float ) ( ( timeNow - timeLastAsk ) / ( ( float ) tickResolution ) );
+	timeLastAsk = timeNow;
+}

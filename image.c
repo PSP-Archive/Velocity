@@ -1,0 +1,574 @@
+/*
+
+	Velocity  v1.5
+	Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
+
+//---------------------------------------------------------------------------------//
+// Includes                                                                        //
+//---------------------------------------------------------------------------------//
+
+#include "vlib.h"
+
+//---------------------------------------------------------------------------------//
+// Image                                                                           //
+//---------------------------------------------------------------------------------//
+
+static int getPow2 ( int value ) {
+	int b = value;
+	int n;
+
+	for ( n = 0; b != 0; n++ )
+		b >>= 1;
+
+	b = 1 << n;
+
+	if ( b == 2 * value )
+		b >>= 1;
+
+	return b;
+}
+
+static void load_png ( const char *filename, Image *img ) {
+	// open the image file
+	FILE *fp;
+
+	if ( ( fp = fopen ( filename, "rb" ) ) == NULL )
+		return;
+
+	png_structp png_ptr;
+	png_infop info_ptr;
+	unsigned int sig_read = 0;
+	png_uint_32 width, height;
+	int bit_depth, color_type, interlace_type, x, y;
+
+	png_ptr = png_create_read_struct ( PNG_LIBPNG_VER_STRING, NULL, NULL, NULL );
+	info_ptr = png_create_info_struct ( png_ptr );
+	png_init_io ( png_ptr, fp );
+	png_set_sig_bytes ( png_ptr, sig_read );
+	png_read_info ( png_ptr, info_ptr );
+	png_get_IHDR ( png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, &interlace_type, int_p_NULL, int_p_NULL );
+
+	img->initWidth = width;
+	img->initHeight = height;
+	img->width = width;
+	img->height = height;
+	img->realWidth = getPow2 ( width );
+	img->realHeight = getPow2 ( height );
+
+	img->totalSize = img->realWidth * img->realHeight * sizeof ( u32 );
+
+	png_set_strip_16 ( png_ptr );
+	png_set_packing ( png_ptr );
+
+	if ( color_type == PNG_COLOR_TYPE_PALETTE )
+		png_set_palette_to_rgb ( png_ptr );
+
+	if ( color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8 )
+		png_set_gray_1_2_4_to_8 ( png_ptr );
+
+	if ( png_get_valid ( png_ptr, info_ptr, PNG_INFO_tRNS ) )
+		png_set_tRNS_to_alpha ( png_ptr );
+
+	png_set_filler ( png_ptr, 0xff, PNG_FILLER_AFTER );
+
+	img->data = ( u32* ) malloc ( img->totalSize );
+
+	u32* line = ( u32* ) malloc ( width * 4 );
+
+	for ( y = 0; y < ( int ) height; y++ ) {
+		png_read_row ( png_ptr, ( u8* ) line, png_bytep_NULL );
+		for ( x = 0; x < ( int ) width; x++ ) {
+			u32 color = line[x];
+			img->data[x + y * ( int ) img->realWidth] =  color;
+		}
+	}
+
+	free ( line );
+
+	png_read_end ( png_ptr, info_ptr );
+	png_destroy_read_struct ( &png_ptr, &info_ptr, png_infopp_NULL );
+
+	// close the file
+	fclose ( fp );
+}
+
+// xart's png loader. It's not working atm (probably due to variable type issues), but once I get it working
+//I'll do a head to head comparison between this and my current png loader to see which one can load the quickest.
+/*static void loadPNG(const char *filename, Image *img)
+{
+	Image *img = (Image*) malloc(sizeof(Image));
+	img->location = location;
+
+	int number_passes, pass;
+	png_structp png_ptr;
+	png_infop info_ptr;
+	unsigned int sig_read = 0;
+	png_uint_32 width, height;
+	int bit_depth, color_type, interlace_type, x, y;
+	u32* line;
+	FILE *fp;
+
+	if((fp = fopen(filename, "rb")) == NULL)
+		return NULL;
+
+	fseek(fp,0,SEEK_SET);
+
+	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if (png_ptr == NULL)
+	{
+		fclose(fp);
+		return NULL;
+	}
+
+	// Optinal error function currently not used in this class
+	//png_set_error_fn(png_ptr, (png_voidp) NULL, (png_error_ptr) NULL, user_warning_fn);
+	info_ptr = png_create_info_struct(png_ptr);
+	if (info_ptr == NULL)
+	{
+		fclose(fp);
+		png_destroy_read_struct(&png_ptr, png_infopp_NULL, png_infopp_NULL);
+		return NULL;
+	}
+
+	png_init_io(png_ptr, fp);
+	png_set_sig_bytes(png_ptr, sig_read);
+	png_read_info(png_ptr, info_ptr);
+	png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, &interlace_type, int_p_NULL, int_p_NULL);
+
+	if (width > 512 || height > 512)
+	{
+		fclose(fp);
+		png_destroy_read_struct(&png_ptr, png_infopp_NULL, png_infopp_NULL);
+		return NULL;
+	}
+
+	img->width = width;
+	img->height = height;
+	img->initWidth = width;
+	img->initHeight = height;
+	img->realWidth = getPow2(width);
+	img->realHeight = getPow2(height);
+
+	// New (the check) - Convert 16-bits per colour component to 8-bits per colour component.
+	if (bit_depth == 16) png_set_strip_16(png_ptr);
+
+	// Extract multiple pixels with bit depths of 1, 2, and 4 from a single
+	// byte into separate bytes (useful for paletted and grayscale images).
+	png_set_packing(png_ptr);
+
+	if (color_type == PNG_COLOR_TYPE_PALETTE)
+		png_set_palette_to_rgb(png_ptr);
+
+	// New - Convert grayscale to RGB triplets
+	if ((color_type == PNG_COLOR_TYPE_GRAY) || (color_type == PNG_COLOR_TYPE_GRAY_ALPHA))
+		png_set_gray_to_rgb(png_ptr);
+
+	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+		png_set_gray_1_2_4_to_8(png_ptr);
+
+	if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
+		png_set_tRNS_to_alpha(png_ptr);
+
+	png_set_filler(png_ptr, 0xff, PNG_FILLER_AFTER);
+
+	u32 *data = (u32 *) memalign(16, img->width * img->height * sizeof(u32));
+
+	if (!data)
+	{
+		fclose(fp);
+		png_destroy_read_struct(&png_ptr, png_infopp_NULL, png_infopp_NULL);
+		return NULL;
+	}
+
+	line = (u32*) malloc(width * 4);
+	if (!line)
+	{
+		free(data);
+		fclose(fp);
+		png_destroy_read_struct(&png_ptr, png_infopp_NULL, png_infopp_NULL);
+		return NULL;
+	}
+
+	// New - Turn on interlace handling.
+	number_passes = png_set_interlace_handling(png_ptr);
+
+	// New - Call to gamma correct and add the background to the palette
+	// and update info structure.
+	png_read_update_info(png_ptr, info_ptr);
+
+	// New - Read the image, one line at a line (easier to debug!)
+	for (pass = 0; pass < number_passes; pass++) {
+      for (y = 0; y < (int)height; y++)
+      {
+         png_read_row(png_ptr, (u8*) line, png_bytep_NULL);
+
+         for (x = 0; x < (int)width; x++)
+         {
+            u32 color = line[x];
+            data[x + y * (int)img->width] = color;
+         }
+      }
+	}
+	free(line);
+
+	png_read_end(png_ptr, info_ptr);
+	png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
+	fclose(fp);
+	img->data=(u32*)data;
+
+	return img;
+} */
+
+// Works, but needs to check file headers to see whether or not it should
+//flip/invert the image's pixels.
+static void load_tga ( const char *filename, Image *img ) {
+	// open the image file
+	FILE *fp;
+
+	if ( ( fp = fopen ( filename, "rb" ) ) == NULL )
+		return;
+
+	unsigned char ucharBad;	// garbage data
+
+	short int	sintBad;		// garbage data
+
+	int colorMode;			// 4 for RGBA, 3 for RGB
+
+	long imageIdx;			// counter variable
+
+	unsigned char colorSwap;	// swap variable
+
+	unsigned char imageTypeCode;
+
+	unsigned char bitCount;
+
+	// read first two bytes of garbage
+	fread ( &ucharBad, sizeof ( unsigned char ), 1, fp );
+
+	fread ( &ucharBad, sizeof ( unsigned char ), 1, fp );
+
+	// read in the image type
+	fread ( &imageTypeCode, sizeof ( unsigned char ), 1, fp );
+
+	// for our purposes, the image type should be either a 2 or a 3
+	if ( ( imageTypeCode != 2 ) && ( imageTypeCode != 3 ) ) {
+		fclose ( fp );
+		return;
+	}
+
+	// read 13 bytes of garbage data
+	fread ( &sintBad, sizeof ( short int ), 1, fp );
+
+	fread ( &sintBad, sizeof ( short int ), 1, fp );
+
+	fread ( &ucharBad, sizeof ( unsigned char ), 1, fp );
+
+	fread ( &sintBad, sizeof ( short int ), 1, fp );
+
+	fread ( &sintBad, sizeof ( short int ), 1, fp );
+
+	// read image dimensions
+	fread ( &img->initWidth, sizeof ( short int ), 1, fp );
+
+	fread ( &img->initHeight, sizeof ( short int ), 1, fp );
+
+	img->width = img->initWidth;
+
+	img->height = img->initHeight;
+
+	img->realWidth = getPow2 ( img->initWidth );
+
+	img->realHeight = getPow2 ( img->initHeight );
+
+	// read bit depth
+	fread ( &bitCount, sizeof ( unsigned char ), 1, fp );
+
+	// read garbage
+	fread ( &ucharBad, sizeof ( unsigned char ), 1, fp );
+
+	// colormode -> 3 = BGR, 4 = BGRA
+	colorMode = bitCount / 8;
+
+	img->totalSize = img->realWidth * img->realHeight * colorMode;
+
+	// allocate memory for image data
+	img->data = ( u32* ) malloc ( sizeof ( u32 ) * img->totalSize );
+
+	// read image data
+	fread ( img->data, sizeof ( u32 ), img->totalSize, fp );
+
+	// change BGR to RGB
+	for ( imageIdx = 0; imageIdx < img->totalSize; imageIdx += colorMode ) {
+		colorSwap = img->data[imageIdx];
+		img->data[imageIdx] = img->data[imageIdx+2];
+		img->data[imageIdx + 2] = colorSwap;
+	}
+
+	// close the file
+	fclose ( fp );
+}
+
+// Bronx's jpeg loader. Broken atm mainly due to variable type conflicts/issues.
+//Compiles fine though :S
+static void load_jpg ( const char *filename, Image *img ) {
+
+	struct jpeg_decompress_struct cinfo;
+
+	// open the image file
+	FILE *fp;
+
+	if ( ( fp = fopen ( filename, "rb" ) ) == NULL )
+		return;
+
+	pspDebugScreenPrintf ( "Blah" );
+
+	sceKernelDelayThread ( 10000 );
+
+	// Create an error manager
+
+	struct jpeg_error_mgr jerr;
+
+	// Make compression info object point to the error handler address
+	cinfo.err = jpeg_std_error ( &jerr );
+
+	// Init the decompression object
+	jpeg_create_decompress ( &cinfo );
+
+	// Specify the data source (the image)
+	jpeg_stdio_src ( &cinfo, fp );
+
+	// Read in the header of the JPEG file
+	jpeg_read_header ( &cinfo, TRUE );
+
+	// Decompress the JPEG file with out compression info
+	jpeg_start_decompress ( &cinfo );
+
+	// Get image dimensions and row span to read in pixel data
+	int rowSpan = cinfo.image_width * cinfo.num_components;
+
+	img->initWidth = cinfo.image_width;
+
+	img->initHeight = cinfo.image_height;
+
+	img->realWidth = getPow2 ( cinfo.image_width );
+
+	img->realHeight = getPow2 ( cinfo.image_height );
+
+	img->totalSize = img->initWidth * img->initHeight * sizeof ( u32 );
+
+	// Allocate memory for the pixel buffer
+	img->data = ( u32* ) malloc ( img->totalSize );
+
+	// Create an array of row pointers
+	u32* rowPtr = ( u32* ) malloc ( img->realHeight * sizeof ( u32 ) );
+
+	int i;
+
+	for ( i = 0; i < img->realHeight; i++ )
+		rowPtr[i] = ( unsigned char ) img->data[i * rowSpan];
+
+	// Extract all the pixel data
+	int rowsRead = 0;
+
+	while ( cinfo.output_scanline < cinfo.output_height )
+		// Read in the current row of pixels and increase the rowsRead count
+		rowsRead += jpeg_read_scanlines ( &cinfo, ( JSAMPARRAY ) & rowPtr[rowsRead], cinfo.output_height - rowsRead );
+
+	free ( rowPtr );
+
+	// Finish decompressing the data
+	jpeg_finish_decompress ( &cinfo );
+
+	// Release all memory for reading and decoding the jpeg
+	jpeg_destroy_decompress ( &cinfo );
+
+	fclose ( fp );
+}
+
+static void swizzle_image ( Image *img ) {
+	// Swizzle the texture
+	int rowblocks = ( ( img->realWidth * 4 ) / 16 );
+	int rowblocks_add = ( rowblocks - 1 ) * 128;
+	unsigned int block_address = 0;
+	unsigned int *src = ( unsigned int* ) img->data;
+
+	static u8 *t_data;
+	t_data = ( u8* ) malloc ( img->totalSize );
+
+	int j;
+	for ( j = 0; j < img->realHeight; j++, block_address += 16 ) {
+		unsigned int *block = ( unsigned int* ) ( ( unsigned int ) & t_data[block_address] | 0x40000000 );
+		int i;
+
+		for ( i = 0; i < rowblocks; i++ ) {
+			*block++ = *src++;
+			*block++ = *src++;
+			*block++ = *src++;
+			*block++ = *src++;
+			block += 28;
+		}
+
+		if ( ( j&0x7 ) == 0x7 )
+			block_address += rowblocks_add;
+	}
+
+	free ( img->data );
+
+	if ( img->location )
+		img->data = ( u32* ) valloc ( img->totalSize );
+	else
+		img->data = ( u32* ) malloc ( img->totalSize );
+
+	//img->data = (u32*)t_data;
+	memcpy ( img->data, t_data, img->totalSize );
+
+	free ( t_data );
+
+	sceKernelDcacheWritebackAll();
+}
+
+Image *load_image ( const char *filename, int location ) {
+	// Allocate some memory for our image
+	Image *img = ( Image* ) malloc ( sizeof ( Image ) );
+	img->location = location;
+
+	// Determine the filetype
+
+	const char *suffix = strrchr ( filename, '.' );
+
+	// Load image by it's filetype
+	if ( strcmp ( suffix, ".png" ) == 0 )
+		load_png ( filename, img );
+
+	//else if(strcmp(suffix,".bmp") == 0)
+	// bitmap file loader goes here
+	else if ( strcmp ( suffix, ".tga" ) == 0 )
+		load_tga ( filename, img );
+	else if ( strcmp ( suffix, ".jpg" ) == 0 )
+		load_jpg ( filename, img );
+
+	sceKernelDcacheWritebackAll();
+
+	// Swizzle the texture
+	swizzle_image ( img );
+
+	img->x = 0.0f;
+	img->y = 0.0f;
+	img->startX = 0.0f;
+	img->startY = 0.0f;
+	img->endX = img->width;
+	img->endY = img->height;
+	img->angle = 0.0f;
+	img->centerX = 0.0f;
+	img->centerY = 0.0f;
+
+	// Clear bad data from the cache
+	sceKernelDcacheWritebackAll();
+
+	return img;
+}
+
+void unload_image ( Image *img ) {
+	if ( img->location )
+		vfree ( img->data );
+	else
+		free ( img->data );
+
+	free ( img );
+}
+
+void draw_image ( Image *img ) {
+	if ( !img->width || !img->endX )
+		return;
+
+	float u_end = img->endX - img->startX;
+	float u_width = img->endX / ( img->width / 64.0f );
+	float cur_u = img->startX;
+	float cur_x = 0.0f;
+
+	// Some matrix stuff to position the matrix and rotate it. Extremely fast though, since it uses vfpu to get the job done
+	vfpu_identity_m ( &m_ortho_view );
+	vfpu_translate_m ( &m_ortho_view, img->x, img->y, 0.0f );
+	
+	vfpu_identity_m ( &m_ortho_model );
+	vfpu_rotateZ_m ( &m_ortho_model, img->angle );
+	vfpu_translate_m ( &m_ortho_model, img->centerX, img->centerY, 0.0f );
+
+	sceGuSetMatrix ( GU_PROJECTION, &m_ortho );
+	sceGuSetMatrix ( GU_VIEW, &m_ortho_view );
+	sceGuSetMatrix ( GU_MODEL, &m_ortho_model );
+
+	float u = 1.0f / ( ( float ) img->initWidth );
+	float v = 1.0f / ( ( float ) img->initHeight );
+	sceGuTexScale ( u, v );
+
+	// Set texture
+	sceGuTexImage ( 0, img->realWidth, img->realHeight, img->realWidth, ( void* ) img->data );
+
+	while ( cur_x != img->width ) {
+		TP_Vertex_3D* vertices = ( TP_Vertex_3D* ) sceGuGetMemory ( 4 * sizeof ( TP_Vertex_3D ) );
+
+		vertices[0].u = cur_u;
+		vertices[0].v = img->startY;
+		vertices[0].x = cur_x;
+		vertices[0].y = 0.0f;
+		vertices[0].z = 0.0f;
+
+		vertices[2].u = cur_u;
+		vertices[2].v = img->endY;
+		vertices[2].x = cur_x;
+		vertices[2].y = img->height;
+		vertices[2].z = 0.0f;
+
+		cur_u += u_width;
+		cur_x += 64.0f;
+
+		if ( cur_x > img->width ) {
+			cur_x = img->width;
+			cur_u = u_end;
+		}
+
+		vertices[1].u = cur_u;
+		vertices[1].v = img->startY;
+		vertices[1].x = cur_x;
+		vertices[1].y = 0.0f;
+		vertices[1].z = 0.0f;
+
+		vertices[3].u = cur_u;
+		vertices[3].v = img->endY;
+		vertices[3].x = cur_x;
+		vertices[3].y = img->height;
+		vertices[3].z = 0.0f;
+
+		sceGuDrawArray ( GU_TRIANGLE_STRIP, GU_TEXTURE_32BITF | GU_VERTEX_32BITF | GU_TRANSFORM_3D, 4, 0, vertices );
+	}
+	sceGuTexScale ( 1.0f, 1.0f );
+}
+
+void set_linear_filter ( short state ) {
+	if ( drawingStarted ) {
+		sceGuTexFilter ( state, state );
+		return;
+	}
+
+	sceGuStart ( GU_DIRECT, DList );
+	sceGuTexFilter ( state, state );
+	sceGuFinish();
+	sceGuSync ( 0, 0 );
+}

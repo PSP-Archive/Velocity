@@ -1,0 +1,915 @@
+/*
+
+	Velocity  v1.5
+	Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
+
+//---------------------------------------------------------------------------------//
+// Includes                                                                        //
+//---------------------------------------------------------------------------------//
+
+#include <pspkernel.h>
+#include <pspdisplay.h>
+#include <pspdebug.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <math.h>
+#include <ctype.h>
+#include <string.h>
+#include <pspctrl.h>
+#include <pspgu.h>
+#include <psprtc.h>
+#include <psppower.h>
+#include <malloc.h>
+#include <png.h>
+#include <pspaudio.h>
+#include <pspatrac3.h>
+#include <pspvfpu.h>
+#include <jpeglib.h>
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+//---------------------------------------------------------------------------------//
+// Data                                                                            //
+//---------------------------------------------------------------------------------//
+
+extern SceCtrlData ctrl;
+
+// Structs for Verts!
+
+typedef struct {
+	u32 color;
+	short x, y, z;
+}
+CP_Vertex_2D; // Color, Position, 2D
+
+typedef struct {
+	short u, v;
+	short x, y, z;
+}
+TP_Vertex_2D; // Texture, Position, 2D
+
+typedef struct {
+	u32 color;
+	float x, y, z;
+}
+CP_Vertex_3D; // Color, Position, 3D
+
+typedef struct {
+	float nx, ny, nz;
+	u32 color;
+	float x, y, z;
+}
+NCP_Vertex_3D; // Normals, Color, Position, 3D
+
+typedef struct {
+	float u, v;
+	float x, y, z;
+}
+TP_Vertex_3D; // Texture, Position, 3D
+
+typedef struct {
+	float nx, ny, nz;
+	float u, v;
+	float x, y, z;
+}
+NTP_Vertex_3D; // Normals, Texture, Position, 3D
+
+// Holds an image
+typedef struct {
+	// Public
+	float x, y, width, height;
+	float startX, startY, endX, endY;
+	float angle, centerX, centerY;
+
+	// Private
+	// DO NOT CHANGE EVER
+	int initWidth, initHeight;
+	int realWidth, realHeight; // Width and height of the texture (both pow2)
+	int totalSize; // The total size of the image (bytes)
+	short location;
+	u32* data; // image data
+}
+Image;
+
+// Holds a model
+typedef struct {
+	float posX, posY, posZ;
+	float sizeX, sizeY, sizeZ;
+	float rotX, rotY, rotZ;
+	int vertTotal;
+	u32 __attribute__ ( ( aligned ( 16 ) ) ) *displayList;
+	TP_Vertex_3D *verts;
+	Image *img;
+}
+Model;
+
+// Holds audio
+typedef struct {}
+Audio;
+
+// Holds font
+typedef struct {}
+Font;
+
+typedef struct {
+	union {
+		struct {
+int select:
+1, start:
+			3;
+int up:
+1, right:
+1, down:
+1, left:
+			1;
+int L:
+1, R:
+			1;
+int triangle:
+3, circle:
+1, cross:
+1, square:
+			1;
+int home:
+1, hold:
+1, wlanOn:
+1, remote:
+1, volUp:
+			1;
+int volDown:
+1, screen:
+1, note:
+1, disc:
+1, ms:
+			1;
+		};
+		int value; // what buttons are on
+	} pressed; // For checking if a button is pressed
+
+	union {
+		struct {
+int select:
+1, start:
+			3;
+int up:
+1, right:
+1, down:
+1, left:
+			1;
+int L:
+1, R:
+			1;
+int triangle:
+3, circle:
+1, cross:
+1, square:
+			1;
+int home:
+1, hold:
+1, wlanOn:
+1, remote:
+1, volUp:
+			1;
+int volDown:
+1, screen:
+1, note:
+1, disc:
+1, ms:
+			1;
+		};
+		int value; // what buttons are on
+	} held; // For checking if a button is held
+
+	union {
+		struct {
+int select:
+1, start:
+			3;
+int up:
+1, right:
+1, down:
+1, left:
+			1;
+int L:
+1, R:
+			1;
+int triangle:
+3, circle:
+1, cross:
+1, square:
+			1;
+int home:
+1, hold:
+1, wlanOn:
+1, remote:
+1, volUp:
+			1;
+int volDown:
+1, screen:
+1, note:
+1, disc:
+1, ms:
+			1;
+		};
+		int value; // what buttons are on
+	} released; // For checking if a button is released
+
+	int repeatMask; // what buttons are going to be repeated
+	int repeatCounter; // A counter for the button repeats when held
+	int repeatInit; // The amount of time between the first repeat when held (this only happens once, unless the button is released and held again(physically))
+	int repeatInterval; // The amount of time between repeats after the first repeat (this is continous, and is used until the button is released(physically))
+
+	short analogX; // The current of the analog nub horizontally. Can be anywhere from 128 to -128.
+	short analogY; // The current of the analog nub horizontally. Can be anywhere from 128 to -128.
+}
+CONTROLLER;
+
+extern CONTROLLER *button;
+
+extern u32* fbp0;
+extern u32* fbp1;
+extern u16* zbp;
+extern unsigned int __attribute__ ( ( aligned ( 16 ) ) ) DList[262144];
+
+extern int curFps, lastFps;  // for calculating the frames per second
+
+extern u32 tickResolution;
+extern u64 fpsTickNow;
+extern u64 fpsTickLast;
+
+extern CONTROLLER buttonInit;
+extern SceCtrlData ctrl;
+
+extern float deltaTime; // The current delta time, used for time based movement
+
+extern const int PRINT_BUFF;
+
+extern const int IN_RAM;
+extern const int IN_VRAM;
+
+extern const int OFF;
+extern const int ON;
+
+extern const int POINTS;
+extern const int LINES;
+extern const int LINE_STRIP;
+extern const int TRIANGLES;
+extern const int TRIANGLE_STRIP;
+extern const int TRIANGLE_FAN;
+extern const int SPRITES;
+
+extern const float PI;
+extern const float PI_180;
+extern short drawingStarted;
+
+extern ScePspFMatrix4 m_ortho, m_projection, m_projection_view, m_projection_model, m_ortho_view, m_ortho_model;
+
+#define RGB(r,g,b)  ((r) | ((g)<<8) | ((b)<<16) | (0xff<<24))
+#define RGBA(r,g,b,a) ((r) | ((g)<<8) | ((b)<<16) | ((a)<<24))
+
+#define IsSet(val,flag) (val&flag)==flag
+
+#define MASK_NONE 0x0
+#define MASK_SELECT 0x000001
+#define MASK_START 0x000008
+#define MASK_UP 0x000010
+#define MASK_RIGHT 0x000020
+#define MASK_DOWN 0x000040
+#define MASK_LEFT 0x000080
+#define MASK_LTRIG 0x000100
+#define MASK_RTRIG 0x000200
+#define MASK_TRIANGLE 0x001000
+#define MASK_CIRCLE 0x002000
+#define MASK_CROSS 0x004000
+#define MASK_SQUARE 0x008000
+#define MASK_HOME 0x010000
+#define MASK_HOLD 0x020000
+#define MASK_NOTE 0x800000
+#define MASK_SCREEN 0x400000
+#define MASK_VOLUP 0x100000
+#define MASK_VOLDOWN 0x200000
+#define MASK_WLANON 0x040000
+#define MASK_REMOTE 0x080000
+#define MASK_DISC 0x1000000
+#define MASK_MS 0x2000000
+#define MASK_ALL MASK_SELECT|MASK_START|MASK_UP|MASK_RIGHT|MASK_DOWN|MASK_LEFT|MASK_LTRIG|MASK_RTRIG|MASK_TRIANGLE|MASK_CIRCLE|MASK_CROSS|MASK_SQUARE
+
+//---------------------------------------------------------------------------------//
+// Vram                                                                            //
+//---------------------------------------------------------------------------------//
+
+void* vrelptr ( void *ptr );  // make a pointer relative to memory base address (ATTENTION: A NULL rel ptr is not illegal/invalid!)
+void* vabsptr ( void *ptr );  // make a pointer absolute (default return type of valloc)
+
+void* valloc ( size_t size );
+void vfree ( void* ptr );
+size_t vmemavail();
+size_t vlargestblock();
+
+#ifdef _DEBUG
+// Debug printf (to stdout) a trace of the current Memblocks
+void __memwalk();
+#endif
+
+
+//---------------------------------------------------------------------------------//
+// General                                                                         //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup General */
+/*@{*/
+
+/**
+ * Start the Velocity Library.
+ *
+ * @par Example: Draw a solid red line through the middle of the screen
+ * @code
+ * void main () // Main function
+ * {
+ * 	start_vLib ();
+ *
+ *	// Load stuff, declare variables, etc.
+ *
+ * 	for(;;)
+ * 	{
+ *		// I usually check for input and update stuff here.
+ *
+ * 		startDrawing ();
+ *
+ * 		// Drawing some stuff.
+ *
+ * 		endDrawing ( FLIP|SYNC );
+ * 	}
+ *
+ * 	// Unload stuff here
+ *
+ * 	stop_vLib ();
+ * }
+ * @endcode
+ **/
+void start_vLib ( void );
+
+/**
+ * Stop the Velocity Library.
+ *
+ * @par Example: Draw a solid red line through the middle of the screen
+ * @code
+ * void main () // Main function
+ * {
+ * 	start_vLib ();
+ *
+ *	// Load stuff, declare variables, etc.
+ *
+ * 	for(;;)
+ * 	{
+ *		// I usually check for input and update stuff here.
+ *
+ * 		startDrawing ();
+ *
+ * 		// Drawing some stuff.
+ *
+ * 		endDrawing ( FLIP|SYNC );
+ * 	}
+ *
+ * 	// Unload stuff here
+ *
+ * 	stop_vLib ();
+ * }
+ * @endcode
+ **/
+void stop_vLib ( void );
+
+/**
+ * Begins drawing routine.
+ *
+ * @par Example: Draw a solid red line through the middle of the screen
+ * @code
+ * void main () // Main function
+ * {
+ * 	start_vLib ();
+ *
+ *	// Load stuff, declare variables, etc.
+ *
+ * 	for(;;)
+ * 	{
+ *		// I usually check for input and update stuff here.
+ *
+ * 		startDrawing ();
+ *
+ * 		// Drawing some stuff.
+ *
+ * 		endDrawing ( FLIP|SYNC );
+ * 	}
+ *
+ * 	// Unload stuff here
+ *
+ * 	stop_vLib ();
+ * }
+ * @endcode
+ **/
+void start_drawing ( void );
+
+/**
+ * Ends drawing routine.
+ *
+ * @par Example: Draw a solid red line through the middle of the screen
+ * @code
+ * void main () // Main function
+ * {
+ * 	start_vLib ();
+ *
+ *	// Load stuff, declare variables, etc.
+ *
+ * 	for(;;)
+ * 	{
+ *		// I usually check for input and update stuff here.
+ *
+ * 		startDrawing ();
+ *
+ * 		// Drawing some stuff.
+ *
+ * 		endDrawing ();
+ *		sync_frame ();
+ * 	}
+ *
+ * 	// Unload stuff here
+ *
+ * 	stop_vLib ();
+ * }
+ * @endcode
+ **/
+void end_drawing ( void );
+
+/**
+ * Flip the screen and wait to vsync.
+ **/
+void sync_frame ( void );
+
+/**
+ * Flip the screen.
+ **/
+void flip_screen ( void );
+
+/**
+ * Wait to vsync. This caps the fps to 60, which is how fast the screen can refresh.
+ **/
+void wait_to_vsync ( void );
+
+/**
+ * Clear the current screen
+ * @note Default color is black
+ * @note Doing this can hurt fps. Try to avoid.
+ **/
+void clear_screen ( void );
+
+/**
+ * Set the clearScreen color
+ *
+ * @par Example: Set the clear color to a bright red
+ * @code
+ * setClearColor(RGB(255,0,0));
+ * @endcode
+ *
+ * @param color - Color used to clear screen.
+ **/
+void set_clear_color ( u32 color );
+
+/**
+ * Calling this at the start of your main loop will update the current delta time.
+ * @note The current delta time is built into vLib. Just use deltaTime after calling updateDeltaTime.
+ **/
+void update_delta_time ( void );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Shape                                                                           //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Shape */
+/*@{*/
+
+/**
+ * Draw a single pixel to the screen
+ *
+ * @par Example: Draw a single white pixel on the screen at 50x50
+ * @code
+ * drawPixel ( 50, 50, RGB(255,255,255));
+ * @endcode
+ *
+ * @param x - Horizontal position.
+ * @param y - Vertical position.
+ * @param color - Color of the pixel.
+ **/
+void draw_pixel ( float x, float y, u32 color );
+
+/**
+ * Draw solid line
+ *
+ * @par Example: Draw a solid red line through the middle of the screen
+ * @code
+ * drawLine ( 240, 0, 240, 272, RGB(255,0,0));
+ * @endcode
+ *
+ * @param startX - Horizontal starting point of the line.
+ * @param startY - Vertical starting point of the line.
+ * @param endX - Horizontal ending point of the line.
+ * @param endY - Vertical ending point of the line.
+ * @param color - Color of the line.
+ **/
+void draw_line ( float startX, float startY, float endX, float endY, u32 color );
+
+/**
+ * Draw solid line
+ *
+ * @par Example: Draw a red-to-blue line through the middle of the screen
+ * @code
+ * drawLine ( 240, 0, 240, 272, RGB(255,0,0), RGB(0,0,255));
+ * @endcode
+ *
+ * @param startX - Horizontal starting point of the line.
+ * @param startY - Vertical starting point of the line.
+ * @param endX - Horizontal ending point of the line.
+ * @param endY - Vertical ending point of the line.
+ * @param color1 - Beginning color of the line.
+ * @param color2 - Ending color of the line.
+ **/
+void draw_grad_line ( float startX, float startY, float endX, float endY, u32 color1, u32 color2 );
+
+/**
+ * Draw a rectangle (border only)
+ *
+ * @par Example: Draw a solid white rectangle
+ * @code
+ * drawLine ( 0, 0, 480, 272, RGB(255,255,255));
+ * @endcode
+ *
+ * @param x - Horizontal position.
+ * @param y - Vertical position.
+ * @param width - The width of the rectangle.
+ * @param height - The height of the rectangle.
+ * @param color - Color of the rectangle.
+ **/
+void draw_rect ( float x, float y, float width, float height, u32 color );
+
+/**
+ * Draw a multi-color rectangle (border only)
+ *
+ * @par Example: Draw a rainbow of a rectangle!
+ * @code
+ * drawLine ( 0, 0, 480, 272, RGB(255,0,0), RGB(0,255,0), RGB(0,0,255), RGB(255,255,255));
+ * @endcode
+ *
+ * @param x - Horizontal position.
+ * @param y - Vertical position.
+ * @param width - The width of the rectangle.
+ * @param height - The height of the rectangle.
+ * @param color1 - Color of the top left corner.
+ * @param color2 - Color of the top right corner.
+ * @param color1 - Color of the bottom right corner.
+ * @param color2 - Color of the bottom left corner.
+ **/
+void draw_grad_rect ( float x, float y, float width, float height, u32 color1, u32 color2, u32 color3, u32 color4 );
+
+/**
+ * Draw a filled rectangle
+ *
+ * @par Example: Draw a solid green filled rectangle
+ * @code
+ * drawLine ( 0, 0, 480, 272, RGB(0,255,0));
+ * @endcode
+ *
+ * @param x - Horizontal position.
+ * @param y - Vertical position.
+ * @param width - The width of the rectangle.
+ * @param height - The height of the rectangle.
+ * @param color - Color of the rectangle.
+ **/
+void draw_fill_rect ( float x, float y, float width, float height, u32 color );
+
+/**
+ * Draw a multi-color rectangle
+ *
+ * @par Example: Draw a rainbow of a rectangle!
+ * @code
+ * drawLine ( 0, 0, 480, 272, RGB(255,0,0), RGB(0,255,0), RGB(0,0,255), RGB(255,255,255));
+ * @endcode
+ *
+ * @param x - Horizontal position.
+ * @param y - Vertical position.
+ * @param width - The width of the rectangle.
+ * @param height - The height of the rectangle.
+ * @param color1 - Color of the top left corner.
+ * @param color2 - Color of the top right corner.
+ * @param color1 - Color of the bottom right corner.
+ * @param color2 - Color of the bottom left corner.
+ **/
+void draw_fill_grad_rect ( float x, float y, float width, float height, u32 color1, u32 color2, u32 color3, u32 color4 );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Image                                                                           //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Image */
+/*@{*/
+
+/**
+ * Loads an image into either ram or vram and swizzles the image
+ *
+ * Available locations are:
+ * 	- IN_RAM
+ * 	- IN_VRAM
+ *
+ * @note Loading into vram allows you to draw images faster, but vram only has about 500Kb of space. On the other hand, ram has about 20Mb of space, but loads 10x slower then vram. A solution would call for putting your most used textures into vram, and everything else into ram!
+ *
+ * @par Example: Load an image into ram
+ * @code
+ * Image *img = load_image ( "image.png", IN_RAM);
+ * @endcode
+ *
+ * @par Example: Load an image into vram
+ * @code
+ * Image *img = load_image ( "image.png", IN_VRAM);
+ * @endcode
+ *
+ * @param filename - Where the image is located.
+ * @param location - Where to load the image (ram or vram).
+ * @returns The Image you loaded
+ **/
+Image *load_image ( const char *filename, int location ); // Determines the type of image and loads it
+
+/**
+ * Unload an image.
+ *
+ * @par Example: Unload an image from memory
+ * @code
+ * unload_image (img);
+ * @endcode
+ *
+ * @param img - The Image you would like to unload.
+ **/
+void unload_image ( Image *img );
+
+/**
+ * Draw an Image.
+ *
+ * @note The images position, size, texture size, angle, and center must all be modified by changing the image's structure. To see how, see the example below.
+ *
+ * Image stuff you can change:
+ * 	- img->x = The horizontal position of the image (default 0)
+ * 	- img->y = The vertical position of the image (default 0)
+ * 	- img->width = The width of the image (default initWidth)
+ * 	- img->height = The height of the image (default initHeight)
+ * 	- img->startX = Horizontal starting point of the image's texture (default 0)
+ * 	- img->startY = Vertical starting point of the image's texture (default 0)
+ * 	- img->endX = Horizontal finishing point of the image's texture (default initWidth)
+ * 	- img->endY = Vertical finishing point of the image's texture (default initHeight)
+ * 	- img->centerX = Vertical position of the image's center (default 0)
+ * 	- img->centerY = Horizontal position of the image's center (default 0)
+ * 	- img->angle = Angle the image is drawn at (default 0)
+ *
+ * @par Example: Draw an image, full screen
+ * @code
+ * img->width = 480.0f;
+ * img->height = 272.0f;
+ * draw_image ( img );
+ * @endcode
+ *
+ * @param img - The Image you would like to draw.
+ **/
+void draw_image ( Image *img );
+
+/**
+ * Turn the linear filter on/off. The linear filter will smooth textures at the cost of fps
+ *
+ * Available states are:
+ * 	- ON
+ * 	- OFF
+ *
+ * @par Example: Turn the linear filter on
+ * @code
+ * set_linear_filter ( ON );
+ * @endcode
+ *
+ * @par Example: Turn the linear filter off
+ * @code
+ * set_linear_filter ( OFF );
+ * @endcode
+ *
+ * @param state - Can either be ON or OFF.
+ **/
+void set_linear_filter ( short state );
+
+//void flip ( Image *img );
+//void setImageAlpha ( Image *img, u8 alpha );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Model                                                                           //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Model */
+/*@{*/
+
+Model *load_model ( const char *filename );
+void unload_model ( Model *mdl );
+
+void draw_model ( Model *mdl, Image *img );
+
+void set_fog ( float near, float far, unsigned int color ); // Need to add in a toggle to turn this on/off
+void disable_fog ( void );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Camera                                                                          //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Camera */
+/*@{*/
+
+void set_camera_3rd_person ( float posX, float posY, float posZ, float rotX, float rotY, float zoom );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Audio                                                                           //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Audio */
+/*@{*/
+
+Audio *load_audio ( const char *filename );
+void play_audio ( Audio *aud, int stream );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Font                                                                            //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Font */
+/*@{*/
+
+Font *load_font ( const char *filename );
+void print ( Font *fnt, char *format );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Controller                                                                      //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Controller */
+/*@{*/
+
+/**
+ * Read the current controller input
+ *
+ * @note There are three button states; pressed, held, and release. Then there are a bunch of buttons. To check on a button, all you have to do is
+ * @code
+ * if(button->STATE.BUTTON) { do stuff }
+ * @endcode
+ * where STATE is the button state to check for and BUTTON is the button to check.
+ *
+ * Available Button States:
+ * 	- button->pressed.BUTTON (checks to see if the button was just pressed)
+ * 	- button->held.BUTTON (checks to see if the button is being held)
+ * 	- button->released.BUTTON (checks to see if the button was just released)
+ *
+ * Available Buttons:
+ * 	- select
+ * 	- start
+ * 	- up
+ * 	- right
+ * 	- down
+ * 	- left
+ * 	- L
+ * 	- R
+ * 	- triangle
+ * 	- circle
+ * 	- cross
+ * 	- square
+ * 	- home (requires kernel mode)
+ * 	- hold (requires kernel mode)
+ * 	- wlanOn (requires kernel mode)
+ * 	- remote (requires kernel mode)
+ * 	- volUp (requires kernel mode)
+ * 	- volDown (requires kernel mode)
+ * 	- screen (requires kernel mode)
+ * 	- note (requires kernel mode)
+ * 	- disc (requires kernel mode)
+ * 	- ms (requires kernel mode)
+ *
+ * Available Button Masks:
+ * 	- MASK_NONE
+ * 	- MASK_ALL
+ * 	- MASK_SELECT
+ * 	- MASK_START
+ * 	- MASK_UP
+ * 	- MASK_RIGHT
+ * 	- MASK_DOWN
+ * 	- MASK_LEFT
+ * 	- MASK_LTRIG
+ * 	- MASK_RTRIG
+ * 	- MASK_TRIANGLE
+ * 	- MASK_CIRCLE
+ * 	- MASK_CROSS
+ * 	- MASK_SQUARE
+ * 	- MASK_HOME
+ * 	- MASK_HOLD
+ * 	- MASK_NOTE
+ * 	- MASK_SCREEN
+ * 	- MASK_VOLUP
+ * 	- MASK_VOLDOWN
+ * 	- MASK_WLANON
+ * 	- MASK_REMOTE
+ * 	- MASK_DISC
+ * 	- MASK_MS
+ *
+ * @par Example: Check to see if the start button is pressed. If it is, then exit.
+ * @code
+ * readInput ( MASK_NONE, 0, 0 );	// Update the current button states
+ * if ( button->pressed.start )		// Is start being pressed?
+ * 			sceKernelExitGame();		// Exit to the xmb/reset psplink
+ * @endcode
+ *
+ * @param masked - Buttons that will be effected by the intervals.
+ * @param init - Length of the first interval after a masked button is pressed + held until it's released.
+ * @param interval - Length of time between each recognized button press after a masked button is held until it's released.
+ **/
+CONTROLLER *read_input ( int masked, int init, int interval );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// VFPU                                                                         //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup VFPU */
+/*@{*/
+
+// Some simple math operations
+float vfpu_sinf ( float rad );
+float vfpu_cosf ( float rad );
+float vfpu_sqrtf ( float x );
+
+// Matrix operations
+void vfpu_identity_m ( ScePspFMatrix4 *m );
+void vfpu_translate_m ( ScePspFMatrix4 *m, float x, float y, float z );
+void vfpu_rotateX_m ( ScePspFMatrix4 *m, float x );
+void vfpu_rotateY_m ( ScePspFMatrix4 *m, float y );
+void vfpu_rotateZ_m ( ScePspFMatrix4 *m, float z );
+void vfpu_rotateXYZ_m ( ScePspFMatrix4 *m, float x, float y, float z );
+void vfpu_rotateZYX_m ( ScePspFMatrix4 *m, float z, float y, float x );
+void vfpu_scale_m ( ScePspFMatrix4 *m, float x, float y, float z );
+void vfpu_lookAt_m ( ScePspFMatrix4 *m, ScePspFVector3* eye, ScePspFVector3* center, ScePspFVector3* up );
+void vfpu_perspective_m ( ScePspFMatrix4 *m, float fovy, float aspect, float near, float far );
+void vfpu_ortho_m ( ScePspFMatrix4 *m, float left, float right, float bottom, float top, float near, float far );
+
+/*@}*/
+
+//---------------------------------------------------------------------------------//
+// Debugging                                                                       //
+//---------------------------------------------------------------------------------//
+
+/** @addtogroup Debugging */
+/*@{*/
+
+// The functions are all going to be combined with some of the other functions to make an all powerful super function!
+void fps ( void );
+void fpsX ( const char *format, ... );
+void sysmon ( void );
+void sysmonX ( const char *format, ... );
+
+/*@}*/
+
+// Some functions I use to benchmark functions. DO NOT USE!
+void start_ticker ( void );
+int end_ticker ( void );
+
+#if defined(__cplusplus)
+}
+#endif

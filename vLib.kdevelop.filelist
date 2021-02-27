@@ -1,0 +1,14 @@
+# KDevelop Custom Project File List
+audio.c
+controller.c
+debug.c
+font.c
+image.c
+main.c
+Makefile
+model.c
+shape.c
+vfpu.c
+vlib.c
+vlib.h
+vram.c

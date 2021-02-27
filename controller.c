@@ -1,0 +1,62 @@
+/*
+
+	Velocity  v1.5
+	Copyright 2006, 2007 Gabriel Anderson
+
+	This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+*/
+
+//---------------------------------------------------------------------------------//
+// Includes                                                                        //
+//---------------------------------------------------------------------------------//
+
+#include "vlib.h"
+
+//---------------------------------------------------------------------------------//
+// Controller                                                                      //
+//---------------------------------------------------------------------------------//
+
+CONTROLLER *button;
+
+CONTROLLER *read_input ( int masked, int init, int interval ) {
+	// Get the buttons currently being pressed
+	sceCtrlPeekBufferPositive ( &ctrl, 1 );
+
+	button->repeatMask = masked; // Assign the buttons masks
+	button->repeatInit = init; // assign the repeat init
+	button->repeatInterval = interval; // assign the repeat intervals
+
+	// if repeat counter is greater then or equal to the repeat interval and th repeat counter is equal to the button init
+	if ( button->repeatCounter >= button->repeatInterval && button->repeatCounter == button->repeatInit ) {
+		button->repeatMask = MASK_NONE; // Remove masked buttons for the rest of the frame
+		button->repeatCounter -= button->repeatInterval; // subtract repeat interval from repeat counter so we get that fun little sped up effect(like with menu's)
+		// if the masked buttons are the same as the held buttons, then increament the counter
+	} else if ( button->repeatMask & ctrl.Buttons ) {
+		if ( button->repeatCounter == 0 ) button->repeatMask = MASK_NONE;
+		button->repeatCounter++;
+		// otherwise, set the counter to 0
+	} else
+		button->repeatCounter = 0;
+
+	button->released.value = button->held.value & ~ctrl.Buttons; // assign the released buttons
+	button->pressed.value = ~button->held.value & ctrl.Buttons; // assign the pressed buttons
+	button->held.value = ctrl.Buttons & ~button->repeatMask; // assign the held buttons
+
+	button->analogX = ( short ) ctrl.Lx - 128; // assign the analog x value
+	button->analogY = ( short ) ctrl.Ly - 128; // assign the anolog y value
+
+	return button; // return all the button info
+}
